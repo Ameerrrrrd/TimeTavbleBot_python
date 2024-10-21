@@ -1,5 +1,6 @@
 import asyncio
-from aiogram import Bot, Dispatcher, F
+import sqlite3 as sq
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message
@@ -159,6 +160,45 @@ async def show_schedule_week(message: Message, state: FSMContext):
 async def change_group(message: Message):
     await message.reply('Выбери группу: ')
 
+
+@dp.message(lambda message: message.text.lower() == 'анекдот')
+async def show_anekdot(message: types.Message):
+    user_id = message.from_user.id
+    con = sq.connect('anekdot.db')
+    cur = con.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS aneki(
+        anek_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        anekdot TEXT
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS user_progress(
+        user_id INTEGER PRIMARY KEY,
+        anek_number INTEGER
+    )
+    """)
+    cur.execute("SELECT anek_number FROM user_progress WHERE user_id = ?", (user_id,))
+    result = cur.fetchone()
+
+    if result is None:
+        anek_number = 1
+        cur.execute("INSERT INTO user_progress (user_id, anek_number) VALUES (?, ?)", (user_id, anek_number))
+    else:
+        anek_number = result[0]
+    cur.execute("SELECT anekdot FROM aneki WHERE anek_id = ?", (anek_number,))
+    anek_result = cur.fetchone()
+
+    if anek_result:
+        await message.answer(anek_result[0])
+        anek_number += 1
+        cur.execute("UPDATE user_progress SET anek_number = ? WHERE user_id = ?", (anek_number, user_id))
+    else:
+        await message.answer("Анекдоты закончились!")
+
+    # Сохраняем изменения
+    con.commit()
+    con.close()
 
 async def main():
     await dp.start_polling(bot)
